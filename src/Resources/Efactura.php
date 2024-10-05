@@ -6,9 +6,12 @@ namespace Anaf\Resources;
 
 use Anaf\Contracts\FileContract;
 use Anaf\Enums\Efactura\UploadStandard;
+use Anaf\Enums\Transporter\ContentType;
+use Anaf\Enums\Transporter\Method;
 use Anaf\Responses\Efactura\CreateMessagesResponse;
 use Anaf\Responses\Efactura\CreatePaginatedMessagesResponse;
 use Anaf\Responses\Efactura\CreateUploadResponse;
+use Anaf\ValueObjects\ResourceUri;
 use Anaf\ValueObjects\Transporter\Payload;
 use Anaf\ValueObjects\Transporter\Xml;
 use Exception;
@@ -25,7 +28,7 @@ class Efactura
      *
      * @throws Exception
      */
-    public function upload(string $xml_path, string $tax_identification_number, UploadStandard $standard = UploadStandard::UBL, bool $extern = false, bool $selfInvoice = false): CreateUploadResponse
+    public function upload(string $xml_path, string $tax_identification_number, UploadStandard $standard = UploadStandard::UBL, bool $extern = false, bool $selfInvoice = false): mixed
     {
         $payload = Payload::upload(
             resource: 'prod/FCTEL/rest/upload',
@@ -45,8 +48,12 @@ class Efactura
             /** @var array{message: string} $response */
             throw new RuntimeException($response['message']);
         }
-
-        return CreateUploadResponse::from($response['@attributes']);
+        try {
+            return CreateUploadResponse::from($response['@attributes']);
+        }
+        catch(Exception) {
+            return $response;
+        }
     }
 
     /**
@@ -130,5 +137,51 @@ class Efactura
         );
 
         return $this->transporter->requestFile($payload);
+    }
+
+    /**
+     * Get the status for a given upload index.
+     *
+     * @see https://mfinante.gov.ro/static/10/eFactura/listamesaje.html
+     *
+     * @param  array<string, string>  $parameters
+     */
+    public function status(string $uploadIndex): array
+    {
+        $payload = Payload::getXml('prod/FCTEL/rest/stareMesaj', ['id_incarcare' => $uploadIndex]);
+
+        $response = $this->transporter->requestObject($payload);
+        if (! array_key_exists('@attributes', $response)) {
+            /** @var array{message: string} $response */
+            throw new RuntimeException($response['message']);
+        }
+//dump($response);
+        return [
+            'status' => $response['@attributes']['stare'],
+            'downloadId' => $response['@attributes']['id_descarcare'] ?? null,
+        ];
+    }    /**
+ * Upload an eFactura XML file to ANAF.
+ *
+ * @see https://mfinante.gov.ro/static/10/eFactura/upload.html
+ *
+ * @throws Exception
+ */
+    public function validate(string $xml_path, $standard = 'FACT1'): CreateUploadResponse
+    {
+        $payload = Payload::upload(
+            resource: 'prod/FCTEL/rest/validare/'.$standard,
+            body: Xml::from($xml_path)->toString()
+        );
+
+        /** @var array<array-key, array{dateResponse: string, ExecutionStatus: string, index_incarcare: string}> $response */
+        $response = $this->transporter->requestObject($payload);
+
+        if (! array_key_exists('@attributes', $response)) {
+            /** @var array{message: string} $response */
+            throw new RuntimeException(var_export($response, true));
+        }
+
+        return CreateUploadResponse::from($response['@attributes']);
     }
 }

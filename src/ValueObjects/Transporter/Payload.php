@@ -79,6 +79,21 @@ class Payload
     }
 
     /**
+     * Creates a new Payload value object from the given parameters.
+     *
+     * @param  array<array-key, mixed>  $parameters
+     */
+    public static function getXml(string $resource, array $parameters): self
+    {
+        $contentType = ContentType::TEXT;
+        $acceptContentType = ContentType::ALL;
+        $method = Method::GET;
+        $uri = ResourceUri::get($resource);
+
+        return new self($contentType, $acceptContentType, $method, $uri, $parameters);
+    }
+
+    /**
      * Creates a new Psr 7 Request instance.
      */
     public function toRequest(BaseUri $baseUri, Headers $headers, QueryParams $queryParams): RequestInterface
